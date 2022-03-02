@@ -246,14 +246,8 @@ where
             }
         }
 
-        if self.buffer.is_empty() {
-            if let Some(x) = self.temp_buffer.take() {
-                if (self.f_r)(&x) {
-                    self.buffer.push_back(x);
-                } else {
-                    self.temp_buffer = Some(x);
-                }
-            }
+        if self.buffer.is_empty() && self.temp_buffer.as_ref().map(&self.f_r).unwrap_or(false) {
+            self.buffer.push_back(self.temp_buffer.take().unwrap());
         }
     }
 }
