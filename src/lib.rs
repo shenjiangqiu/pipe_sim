@@ -7,18 +7,21 @@ use std::{
 pub trait Buffer: Sized {
     type Output;
     type Input;
+    type InputInfo;
+    type OutputInfo;
+
     fn output_connect_input<T, F>(self, to: T, f: F) -> ConnectedBuffer<Self, T, F>
     where
         T: Buffer<Input = Self::Output>,
-        F: Fn(&Self::Output) -> u64,
+        F: Fn(Option<&Self::OutputInfo>, Option<&T::InputInfo>) -> u64,
     {
         ConnectedBuffer::new(self, to, f)
     }
 
-    fn input_connect_output<T, F>(self, from: T, f: F) -> ConnectedBuffer<T, Self, F>
+    fn input_connect_output<T, F, INFO>(self, from: T, f: F) -> ConnectedBuffer<T, Self, F>
     where
         T: Buffer<Output = Self::Input>,
-        F: Fn(&T::Output) -> u64,
+        F: Fn(Option<&T::OutputInfo>, Option<&Self::InputInfo>) -> u64,
     {
         ConnectedBuffer::new(from, self, f)
     }
@@ -29,7 +32,12 @@ pub trait Buffer: Sized {
     fn pop_output(&mut self) -> Option<Self::Output>;
     fn get_output(&self) -> Option<&Self::Output>;
     fn push_input(&mut self, input: Self::Input);
+
+    // to info to calculate the transfer delay
+    fn get_input_info(&self) -> Option<&Self::InputInfo>;
+    fn get_output_info(&self) -> Option<&Self::OutputInfo>;
 }
+
 #[derive(Debug)]
 enum ConnectedBufferState {
     Idle,
@@ -42,7 +50,7 @@ pub struct ConnectedBuffer<T, U, F>
 where
     T: Buffer,
     U: Buffer<Input = T::Output>,
-    F: Fn(&T::Output) -> u64,
+    F: Fn(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
 {
     pub from: T,
     pub to: U,
@@ -54,7 +62,7 @@ impl<T, U, F> ConnectedBuffer<T, U, F>
 where
     T: Buffer,
     U: Buffer<Input = T::Output>,
-    F: Fn(&T::Output) -> u64,
+    F: Fn(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
 {
     /// Description:
     ///    Creates a new ConnectedBuffer
@@ -76,10 +84,13 @@ impl<T, U, F> Buffer for ConnectedBuffer<T, U, F>
 where
     T: Buffer,
     U: Buffer<Input = T::Output>,
-    F: Fn(&T::Output) -> u64,
+    F: Fn(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
 {
     type Output = U::Output;
     type Input = T::Input;
+    type InputInfo = T::InputInfo;
+
+    type OutputInfo = U::OutputInfo;
 
     fn input_avaliable(&self) -> bool {
         self.from.input_avaliable()
@@ -93,8 +104,8 @@ where
 
         match self.state {
             Idle => {
-                if let (Some(x), true) = (self.from.get_output(), self.to.input_avaliable()) {
-                    let cycles = (self.f)(x);
+                if let (Some(_x), true) = (self.from.get_output(), self.to.input_avaliable()) {
+                    let cycles = (self.f)(self.from.get_output_info(), self.to.get_input_info());
                     self.state = WaitingToMove(if cycles == 0 { 0 } else { cycles - 1 });
                 }
             }
@@ -103,8 +114,9 @@ where
                     self.state = Idle;
                     self.to.push_input(self.from.pop_output().unwrap());
                     // if become idle, can immediately calculate the next cycle
-                    if let (Some(x), true) = (self.from.get_output(), self.to.input_avaliable()) {
-                        let cycles = (self.f)(x);
+                    if let (Some(_), true) = (self.from.get_output(), self.to.input_avaliable()) {
+                        let cycles =
+                            (self.f)(self.from.get_output_info(), self.to.get_input_info());
                         self.state = WaitingToMove(if cycles == 0 { 0 } else { cycles - 1 });
                     }
                 } else {
@@ -124,6 +136,14 @@ where
     }
     fn get_output(&self) -> Option<&Self::Output> {
         self.to.get_output()
+    }
+
+    fn get_input_info(&self) -> Option<&Self::InputInfo> {
+        self.from.get_input_info()
+    }
+
+    fn get_output_info(&self) -> Option<&Self::OutputInfo> {
+        self.to.get_output_info()
     }
 }
 
@@ -148,6 +168,8 @@ impl<T> Default for DoubleBuffer<T> {
 impl<T> Buffer for DoubleBuffer<T> {
     type Input = T;
     type Output = T;
+    type InputInfo = T;
+    type OutputInfo = T;
 
     fn input_avaliable(&self) -> bool {
         self.buffer.len() < 2
@@ -167,6 +189,14 @@ impl<T> Buffer for DoubleBuffer<T> {
 
     fn push_input(&mut self, input: Self::Input) {
         self.buffer.push_back(input);
+    }
+
+    fn get_input_info(&self) -> Option<&Self::InputInfo> {
+        None
+    }
+
+    fn get_output_info(&self) -> Option<&Self::OutputInfo> {
+        self.buffer.front()
     }
 }
 
@@ -212,6 +242,9 @@ where
     type Output = O;
 
     type Input = I;
+    type InputInfo = I;
+
+    type OutputInfo = O;
 
     fn input_avaliable(&self) -> bool {
         match &self.temp_buffer {
@@ -250,6 +283,14 @@ where
             self.buffer.push_back(self.temp_buffer.take().unwrap());
         }
     }
+
+    fn get_input_info(&self) -> Option<&Self::InputInfo> {
+        None
+    }
+
+    fn get_output_info(&self) -> Option<&Self::OutputInfo> {
+        self.get_output()
+    }
 }
 impl<T> Display for DoubleBuffer<T>
 where
@@ -275,7 +316,7 @@ impl<T, U, F> Display for ConnectedBuffer<T, U, F>
 where
     T: Buffer + Display,
     U: Buffer<Input = T::Output> + Display,
-    F: Fn(&T::Output) -> u64,
+    F: Fn(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} -> {}", self.from, self.to)
@@ -289,7 +330,7 @@ mod test {
     fn test() {
         let buffer: DoubleBuffer<u32> = DoubleBuffer::default();
         let agg_buffer = AggBuffer::new(|x: u32| x as u64, |x, y| *x += *y, |x| *x == 10);
-        let mut system = buffer.output_connect_input(agg_buffer, |_x| 1);
+        let mut system = buffer.output_connect_input(agg_buffer, |_x, _y| 1);
         system.push_input(1);
         for i in 0..30 {
             system.cycle();
