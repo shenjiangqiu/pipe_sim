@@ -1,6 +1,6 @@
 [package]
 name = "pipe_sim"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "a Pipe Simulator Framework for fast building of complex pipelines"
 license = "MIT"
