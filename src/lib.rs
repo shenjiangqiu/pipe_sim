@@ -246,12 +246,13 @@ where
             }
         }
 
-        // finally push the temp buffer to the buffer if it's ready
-        if let Some(x) = self.temp_buffer.take() {
-            if (self.f_r)(&x) {
-                self.buffer.push_back(x);
-            } else {
-                self.temp_buffer = Some(x);
+        if self.buffer.is_empty() {
+            if let Some(x) = self.temp_buffer.take() {
+                if (self.f_r)(&x) {
+                    self.buffer.push_back(x);
+                } else {
+                    self.temp_buffer = Some(x);
+                }
             }
         }
     }
@@ -298,14 +299,22 @@ mod test {
         system.push_input(1);
         for i in 0..30 {
             system.cycle();
-            if i==10{
+            println!("{}:{}", i, system);
+            if i == 10 {
                 assert_eq!(system.get_output(), Some(&10));
-                assert!(matches!(system.to.temp_buffer,None))
+                assert!(matches!(system.to.temp_buffer, None))
             }
-            if i==20{
+            if i == 20 {
                 assert_eq!(system.get_output(), Some(&10));
-                assert!(matches!(system.to.temp_buffer,None));
-                assert_eq!(system.to.buffer.len(),2);
+                assert!(matches!(system.to.temp_buffer, Some(10)));
+                assert_eq!(system.to.buffer.len(), 1);
+                assert_eq!(system.from.buffer.len(), 1);
+            }
+            if i == 21 {
+                assert_eq!(system.get_output(), Some(&10));
+                assert!(matches!(system.to.temp_buffer, Some(10)));
+                assert_eq!(system.to.buffer.len(), 1);
+                assert_eq!(system.from.buffer.len(), 2);
             }
             if system.input_avaliable() {
                 system.push_input(1);
