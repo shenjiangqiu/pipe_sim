@@ -5,5 +5,5 @@ edition = "2021"
 description = "a Pipe Simulator Framework for fast building of complex pipelines"
 license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
+repository = "https://github.com/shenjiangqiu/pipe_sim"
 [dependencies]
