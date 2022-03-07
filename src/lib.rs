@@ -10,20 +10,34 @@ pub trait Buffer: Sized {
     type InputInfo;
     type OutputInfo;
 
-    fn output_connect_input<T, F>(self, to: T, f: F) -> ConnectedBuffer<Self, T, F>
+    fn output_connect_input<T, F>(self, to: T, f: F) -> ConnectedBufferWithFn<Self, T, F>
     where
         T: Buffer<Input = Self::Output>,
         F: Fn(Option<&Self::OutputInfo>, Option<&T::InputInfo>) -> u64,
     {
-        ConnectedBuffer::new(self, to, f)
+        ConnectedBufferWithFn::new(self, to, f)
     }
 
-    fn input_connect_output<T, F, INFO>(self, from: T, f: F) -> ConnectedBuffer<T, Self, F>
+    fn input_connect_output<T, F, INFO>(self, from: T, f: F) -> ConnectedBufferWithFn<T, Self, F>
     where
         T: Buffer<Output = Self::Input>,
         F: Fn(Option<&T::OutputInfo>, Option<&Self::InputInfo>) -> u64,
     {
-        ConnectedBuffer::new(from, self, f)
+        ConnectedBufferWithFn::new(from, self, f)
+    }
+    fn connect_with_fn<T, F>(self, to: T, f: F) -> ConnectedBufferWithFn<Self, T, F>
+    where
+        T: Buffer<Input = Self::Output>,
+        F: Fn(Option<&Self::OutputInfo>, Option<&T::InputInfo>) -> u64,
+    {
+        ConnectedBufferWithFn::new(self, to, f)
+    }
+
+    fn connect<T>(self, to: T) -> ConnectedBuffer<Self, T>
+    where
+        T: Buffer<Input = Self::Output>,
+    {
+        ConnectedBuffer::new(self, to)
     }
 
     fn cycle(&mut self) {}
@@ -46,7 +60,7 @@ enum ConnectedBufferState {
 use ConnectedBufferState::*;
 
 #[derive(Debug)]
-pub struct ConnectedBuffer<T, U, F>
+pub struct ConnectedBufferWithFn<T, U, F>
 where
     T: Buffer,
     U: Buffer<Input = T::Output>,
@@ -58,7 +72,7 @@ where
     state: ConnectedBufferState,
 }
 
-impl<T, U, F> ConnectedBuffer<T, U, F>
+impl<T, U, F> ConnectedBufferWithFn<T, U, F>
 where
     T: Buffer,
     U: Buffer<Input = T::Output>,
@@ -71,7 +85,7 @@ where
     /// - `to`: The buffer to write to
     /// - `f`: The function to call when input buffer is ready to be read and the output buffer is ready to be written, F return the cycles to finish the transfer
     pub fn new(from: T, to: U, f: F) -> Self {
-        ConnectedBuffer {
+        ConnectedBufferWithFn {
             from,
             to,
             f,
@@ -80,7 +94,7 @@ where
     }
 }
 
-impl<T, U, F> Buffer for ConnectedBuffer<T, U, F>
+impl<T, U, F> Buffer for ConnectedBufferWithFn<T, U, F>
 where
     T: Buffer,
     U: Buffer<Input = T::Output>,
@@ -123,6 +137,79 @@ where
                     self.state = WaitingToMove(cycles - 1);
                 }
             }
+        }
+        self.to.cycle();
+    }
+
+    fn pop_output(&mut self) -> Option<Self::Output> {
+        self.to.pop_output()
+    }
+
+    fn push_input(&mut self, input: Self::Input) {
+        self.from.push_input(input);
+    }
+    fn get_output(&self) -> Option<&Self::Output> {
+        self.to.get_output()
+    }
+
+    fn get_input_info(&self) -> Option<&Self::InputInfo> {
+        self.from.get_input_info()
+    }
+
+    fn get_output_info(&self) -> Option<&Self::OutputInfo> {
+        self.to.get_output_info()
+    }
+}
+
+#[derive(Debug)]
+pub struct ConnectedBuffer<T, U>
+where
+    T: Buffer,
+    U: Buffer<Input = T::Output>,
+{
+    pub from: T,
+    pub to: U,
+}
+
+impl<T, U> ConnectedBuffer<T, U>
+where
+    T: Buffer,
+    U: Buffer<Input = T::Output>,
+{
+    /// Description:
+    ///    Creates a new ConnectedBuffer
+    /// Parameters:
+    /// - `from`: The buffer to read from
+    /// - `to`: The buffer to write to
+    /// - `f`: The function to call when input buffer is ready to be read and the output buffer is ready to be written return the cycles to finish the transfer
+    pub fn new(from: T, to: U) -> Self {
+        ConnectedBuffer { from, to }
+    }
+}
+
+impl<T, U> Buffer for ConnectedBuffer<T, U>
+where
+    T: Buffer,
+    U: Buffer<Input = T::Output>,
+{
+    type Output = U::Output;
+    type Input = T::Input;
+    type InputInfo = T::InputInfo;
+
+    type OutputInfo = U::OutputInfo;
+
+    fn input_avaliable(&self) -> bool {
+        self.from.input_avaliable()
+    }
+    fn output_avaliable(&self) -> bool {
+        self.to.output_avaliable()
+    }
+
+    fn cycle(&mut self) {
+        self.from.cycle();
+        // transfer
+        if let (Some(_x), true) = (self.from.get_output(), self.to.input_avaliable()) {
+            self.to.push_input(self.from.pop_output().unwrap());
         }
         self.to.cycle();
     }
@@ -312,7 +399,7 @@ where
     }
 }
 
-impl<T, U, F> Display for ConnectedBuffer<T, U, F>
+impl<T, U, F> Display for ConnectedBufferWithFn<T, U, F>
 where
     T: Buffer + Display,
     U: Buffer<Input = T::Output> + Display,
