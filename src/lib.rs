@@ -13,7 +13,7 @@ pub trait Buffer: Sized {
     fn output_connect_input<T, F>(self, to: T, f: F) -> ConnectedBufferWithFn<Self, T, F>
     where
         T: Buffer<Input = Self::Output>,
-        F: Fn(Option<&Self::OutputInfo>, Option<&T::InputInfo>) -> u64,
+        F: FnMut(Option<&Self::OutputInfo>, Option<&T::InputInfo>) -> u64,
     {
         ConnectedBufferWithFn::new(self, to, f)
     }
@@ -21,14 +21,14 @@ pub trait Buffer: Sized {
     fn input_connect_output<T, F, INFO>(self, from: T, f: F) -> ConnectedBufferWithFn<T, Self, F>
     where
         T: Buffer<Output = Self::Input>,
-        F: Fn(Option<&T::OutputInfo>, Option<&Self::InputInfo>) -> u64,
+        F: FnMut(Option<&T::OutputInfo>, Option<&Self::InputInfo>) -> u64,
     {
         ConnectedBufferWithFn::new(from, self, f)
     }
     fn connect_with_fn<T, F>(self, to: T, f: F) -> ConnectedBufferWithFn<Self, T, F>
     where
         T: Buffer<Input = Self::Output>,
-        F: Fn(Option<&Self::OutputInfo>, Option<&T::InputInfo>) -> u64,
+        F: FnMut(Option<&Self::OutputInfo>, Option<&T::InputInfo>) -> u64,
     {
         ConnectedBufferWithFn::new(self, to, f)
     }
@@ -64,7 +64,7 @@ pub struct ConnectedBufferWithFn<T, U, F>
 where
     T: Buffer,
     U: Buffer<Input = T::Output>,
-    F: Fn(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
+    F: FnMut(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
 {
     pub from: T,
     pub to: U,
@@ -76,7 +76,7 @@ impl<T, U, F> ConnectedBufferWithFn<T, U, F>
 where
     T: Buffer,
     U: Buffer<Input = T::Output>,
-    F: Fn(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
+    F: FnMut(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
 {
     /// Description:
     ///    Creates a new ConnectedBuffer
@@ -98,7 +98,7 @@ impl<T, U, F> Buffer for ConnectedBufferWithFn<T, U, F>
 where
     T: Buffer,
     U: Buffer<Input = T::Output>,
-    F: Fn(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
+    F: FnMut(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
 {
     type Output = U::Output;
     type Input = T::Input;
@@ -403,7 +403,7 @@ impl<T, U, F> Display for ConnectedBufferWithFn<T, U, F>
 where
     T: Buffer + Display,
     U: Buffer<Input = T::Output> + Display,
-    F: Fn(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
+    F: FnMut(Option<&T::OutputInfo>, Option<&U::InputInfo>) -> u64,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} -> {}", self.from, self.to)
